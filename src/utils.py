@@ -25,3 +25,29 @@ def plot_complex_trajectory_3d(z, channel_idx=0, duration=1000):
     
     plt.legend()
     plt.show()
+    
+
+def compare_3d_trajectories(z_list, labels, channel_idx=0, duration=1000):
+    """
+    여러 라벨의 복소 궤적을 3차원 상에서 나란히 비교함.
+    """
+    fig = plt.figure(figsize=(15, 7))
+    
+    for i, (z, label) in enumerate(zip(z_list, labels)):
+        ax = fig.add_subplot(1, len(z_list), i+1, projection='3d')
+        
+        # 데이터 슬라이싱
+        z_slice = z[channel_idx, :duration]
+        real, imag = z_slice.real, z_slice.imag
+        time = np.arange(len(z_slice))
+        
+        # 궤적 그리기
+        ax.plot(real, imag, time, alpha=0.8, label=label)
+        ax.set_xlabel('Real')
+        ax.set_ylabel('Imaginary')
+        ax.set_zlabel('Time')
+        ax.set_title(f'Trajectory: {label}')
+        ax.legend()
+        
+    plt.tight_layout()
+    plt.show()

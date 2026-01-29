@@ -43,6 +43,48 @@ def run_research_pipeline():
 
     # 3D 궤적도 다시 한 번 확인 (이 스파이크들이 '꺾이는 지점'에서 나오는지)
     plot_complex_trajectory_3d(analytic_data, channel_idx=ch, duration=1000)
+    
+import mne
+import numpy as np
+from src.preprocess import EEGLoader
+from src.utils import compare_3d_trajectories
+
+def run_comparison():
+    print("--- Comparing Left vs Right Motor Imagery ---")
+    
+    # 1. 데이터 로드
+    loader = EEGLoader()
+    raw = loader.fetch_and_load(subject=1)
+    
+    # 2. 이벤트(라벨) 추출
+    events, event_id = mne.events_from_annotations(raw)
+    # T1: Left Hand (보통 ID 2), T2: Right Hand (보통 ID 3)
+    # event_id 구성에 따라 다를 수 있으니 확인 필요
+    print(f"Event ID Mapping: {event_id}")
+
+    # 3. 라벨별 샘플 구간 찾기
+    # 첫 번째로 등장하는 왼손(T1)과 오른손(T2) 시점을 찾음
+    t1_start = events[events[:, 2] == event_id['T1']][0][0]
+    t2_start = events[events[:, 2] == event_id['T2']][0][0]
+    
+    # 4. 해당 구간 전처리 (Analytic Signal로 변환)
+    # 이벤트 발생 시점부터 약 2초(320 samples 정도, 샘플링 레이트 160Hz 기준) 잘라냄
+    duration = 320 
+    
+    left_hand_raw = raw.copy().crop(tmin=t1_start/raw.info['sfreq'], 
+                                    tmax=(t1_start+duration)/raw.info['sfreq'])
+    right_hand_raw = raw.copy().crop(tmin=t2_start/raw.info['sfreq'], 
+                                     tmax=(t2_start+duration)/raw.info['sfreq'])
+    
+    z_left, _ = loader.process_to_analytic(left_hand_raw)
+    z_right, _ = loader.process_to_analytic(right_hand_raw)
+    
+    # 5. 비교 시각화
+    print("Visualizing comparison...")
+    compare_3d_trajectories([z_left, z_right], ['Left Hand', 'Right Hand'], 
+                            channel_idx=0, duration=duration)
+
 
 if __name__ == "__main__":
-    run_research_pipeline()
+    # run_research_pipeline()
+    run_comparison()
