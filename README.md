@@ -26,17 +26,23 @@ The extracted curvature serves as the primary driver for spike generation. By us
 ## 📂 Project Structure
 
 ```text
-.
-├── data/               # Raw and Processed EEG Datasets (SEED, BCI IV, etc.)
-├── src/                # Core Source Code
-│   ├── preprocess.py   # Signal Filtering & Hilbert Transform
-│   ├── geometry.py     # Curvature & Trajectory Analysis
-│   ├── encoder.py      # Spike Encoding Schemes (Rate/Latency)
-│   └── models.py       # SNN Architectures (LIF, Adaptive-LIF)
-├── notebooks/          # Research Sandboxes & Data Viz
-├── results/            # Model Weights & Performance Metrics
-├── main.py             # End-to-End Pipeline Execution
-└── requirements.txt    # Dependency Manifest
+NEURO_CURVATURE/
+├── data/               # Data storage
+│   ├── processed/      # Curvature-extracted or preprocessed data
+│   └── raw/            # Raw EEG datasets (SEED, BCI, etc.)
+├── notebooks/          # Research sandboxes & visualization
+├── results/            # Model weights & performance logs
+├── src/                # Core logic
+│   ├── __init__.py
+│   ├── features.py     # Curvature & geometric feature extraction
+│   ├── models.py       # SNN architectures
+│   ├── preprocess.py   # Signal cleaning & Hilbert transform
+│   └── utils.py        # Helper functions
+├── main.py             # Pipeline execution entry point
+├── pyproject.toml      # Project metadata & dependencies (uv)
+├── .python-version     # Python version for uv
+├── .gitignore
+└── README.md
 ```
 
 ## 🛠 Tech Stack
