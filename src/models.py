@@ -1,3 +1,4 @@
+# src/models.py
 import torch
 import snntorch as snn
 from snntorch import surrogate
@@ -15,9 +16,8 @@ class SimpleSNN(torch.nn.Module):
         mem1 = self.lif1.init_leaky()
         mem2 = self.lif2.init_leaky()
         
-        spk2_rec = [] # 스파이크 기록용 리스트
-        
-        # 시간축을 따라 루프 실행
+        spk2_rec = [] # 결과를 저장할 리스트
+
         for step in range(x.size(0)):
             cur1 = self.fc1(x[step])
             spk1, mem1 = self.lif1(cur1, mem1)
