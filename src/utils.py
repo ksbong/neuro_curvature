@@ -51,3 +51,46 @@ def compare_3d_trajectories(z_list, labels, channel_idx=0, duration=1000):
         
     plt.tight_layout()
     plt.show()
+    
+import mne
+from src.core.preprocess import EEGLoader
+from src.core.geometry import GeometryExtractor
+from src.data.encoder import GeometricSpikeEncoder
+
+def run_research_pipeline():
+    print("\n--- Phase 1: Basic Research Pipeline ---")
+    loader = EEGLoader()
+    raw = loader.fetch_and_load(subject=1)
+    analytic_data, _ = loader.process_to_analytic(raw)
+    
+    curvature = GeometryExtractor.calculate_curvature(analytic_data)
+    encoder = GeometricSpikeEncoder(threshold_type='std')
+    spikes, threshold = encoder.threshold_encoding(curvature)
+    
+    plt.figure(figsize=(12, 4))
+    plt.plot(curvature[0, :500], label=r'Curvature ($\kappa$)')
+    plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold')
+    plt.legend(); plt.show()
+
+def run_quantitative_comparison():
+    print("\n--- Phase 3: Quantitative Analysis ---")
+    loader = EEGLoader()
+    raw = loader.fetch_and_load(subject=1)
+    events, event_id = mne.events_from_annotations(raw)
+    
+    sfreq = raw.info['sfreq']
+    duration = int(sfreq * 3)
+    
+    t1_idx = events[events[:, 2] == event_id['T1']][0][0]
+    t2_idx = events[events[:, 2] == event_id['T2']][0][0]
+    
+    z_l, _ = loader.process_to_analytic(raw.copy().crop(tmin=t1_idx/sfreq, tmax=(t1_idx+duration)/sfreq))
+    z_r, _ = loader.process_to_analytic(raw.copy().crop(tmin=t2_idx/sfreq, tmax=(t2_idx+duration)/sfreq))
+    
+    curv_l = GeometryExtractor.calculate_curvature(z_l)
+    curv_r = GeometryExtractor.calculate_curvature(z_r)
+    
+    plt.hist(curv_l.flatten(), bins=100, alpha=0.5, label='Left', color='blue', range=(0, 2))
+    plt.hist(curv_r.flatten(), bins=100, alpha=0.5, label='Right', color='red', range=(0, 2))
+    plt.title("Curvature Distribution")
+    plt.legend(); plt.show()

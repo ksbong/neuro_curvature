@@ -9,23 +9,26 @@ class EEGLoader:
         # 폴더가 없으면 생성
         os.makedirs(self.save_path, exist_ok=True)
 
-    def fetch_and_load(self, subject=1, runs=[4, 8, 12]):
+    # src/core/preprocess.py
+
+    def fetch_and_load(self, subjects=None):
         """
-        PhysioNet의 EEGBCI 데이터를 자동으로 다운로드하고 로드함.
-        runs [4, 8, 12]는 보통 Motor Imagery (손/발 상상) 데이터임.
+        여러 피험자의 데이터를 로드하여 합침.
+        subjects: [1, 2, 3, 4, 5] 식의 리스트
         """
-        print(f"--- Fetching EEGBCI Data for Subject {subject} ---")
-        # 자동 다운로드 및 경로 반환
-        files = mne.datasets.eegbci.load_data(subject, runs, path=self.save_path)
+        if subjects is None:
+            subjects = [1]
+            
+        all_raws = []
+        for sub in subjects:
+            print(f"--- Fetching EEGBCI Data for Subject {sub} ---")
+            # runs 4, 8, 12 (Motor Imagery: Left/Right Hand)
+            paths = mne.datasets.eegbci.load_data(sub, [4, 8, 12])
+            raws = [mne.io.read_raw_edf(p, preload=True) for p in paths]
+            all_raws.extend(raws)
         
-        # 데이터 합치기 (Concat)
-        raws = [mne.io.read_raw_edf(f, preload=True) for f in files]
-        raw = mne.concatenate_raws(raws)
-        
-        # 채널 이름 표준화 (10-20 시스템)
-        mne.datasets.eegbci.standardize(raw)
-        raw.set_montage('standard_1020')
-        
+        # 여러 세션을 하나로 합침
+        raw = mne.concatenate_raws(all_raws)
         return raw
 
     def process_to_analytic(self, raw, l_freq=0.5, h_freq=50.0):

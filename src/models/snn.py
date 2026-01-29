@@ -14,16 +14,18 @@ class GeometricSNN(torch.nn.Module):
         self.lif2 = snn.Leaky(beta=beta, spike_grad=spike_grad)
 
     def forward(self, x):
-        # x: (Time, Batch, Channels)
+        # x shape: (time_steps, batch, num_inputs)
         mem1 = self.lif1.init_leaky()
-        mem2 = self.lif2.index_copy.init_leaky()
+        # 이 부분! .index_copy 를 삭제해야 해
+        mem2 = self.lif2.init_leaky() 
         
-        spk2_rec = []
+        spk2_rec = [] 
+
         for step in range(x.size(0)):
             cur1 = self.fc1(x[step])
             spk1, mem1 = self.lif1(cur1, mem1)
             cur2 = self.fc2(spk1)
             spk2, mem2 = self.lif2(cur2, mem2)
             spk2_rec.append(spk2)
-            
-        return torch.stack(spk2_rec) # (Time, Batch, Output)
+
+        return torch.stack(spk2_rec), mem2
