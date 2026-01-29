@@ -37,6 +37,7 @@ The extracted curvature serves as the primary driver for spike generation. By us
 ├── results/            # Model Weights & Performance Metrics
 ├── main.py             # End-to-End Pipeline Execution
 └── requirements.txt    # Dependency Manifest
+```
 
 ## 🛠 Tech Stack
 
