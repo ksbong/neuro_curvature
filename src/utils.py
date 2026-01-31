@@ -1,96 +1,146 @@
+from src.core.preprocess import EEGLoader
+from src.core.geometry import GeometryExtractor
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_complex_trajectory_3d(z, channel_idx=0, duration=1000):
+def plot_complex_trajectory_3d(z, channel_idx=0, duration_sec=1.0, sfreq=160.0):
     """
-    복소 평면 궤적을 시간축(Z축)과 함께 3차원으로 시각화함.
+    단일 채널의 복소 궤적을 3차원(시간, 실수, 허수)으로 시각화.
+    * 단위 표시 추가됨
     """
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
     
-    # 데이터 슬라이싱 (너무 길면 그래프가 무거워지니 duration만큼만)
-    z_slice = z[channel_idx, :duration]
+    # 샘플 수 계산
+    n_samples = int(duration_sec * sfreq)
+    z_slice = z[channel_idx, :n_samples]
+    
     real = z_slice.real
     imag = z_slice.imag
-    time = np.arange(len(z_slice)) # 시간축
+    time = np.arange(len(z_slice)) / sfreq  # 시간축 (초 단위)
     
-    # 3D 선 그래프 그리기
-    ax.plot(real, imag, time, label=f'Channel {channel_idx}', alpha=0.8)
+    # 3D 선 그래프
+    ax.plot(real, imag, time, label=f'Ch {channel_idx}', alpha=0.8, linewidth=1.5)
     
-    # 축 설정
-    ax.set_xlabel('Real (Original Signal)')
-    ax.set_ylabel('Imaginary (Hilbert)')
-    ax.set_zlabel('Time (Steps)')
-    ax.set_title(f'3D Spatio-temporal EEG Trajectory - Ch {channel_idx}')
+    # [중요] 단위(Unit) 명시
+    ax.set_xlabel(r'Real Amplitude [$\mu V$]')
+    ax.set_ylabel(r'Imaginary Amplitude [$\mu V$]')
+    ax.set_zlabel('Time [s]')
+    ax.set_title(f'3D Phase Space Trajectory (Ch {channel_idx})')
     
     plt.legend()
-    plt.show()
-    
-
-def compare_3d_trajectories(z_list, labels, channel_idx=0, duration=1000):
-    """
-    여러 라벨의 복소 궤적을 3차원 상에서 나란히 비교함.
-    """
-    fig = plt.figure(figsize=(15, 7))
-    
-    for i, (z, label) in enumerate(zip(z_list, labels)):
-        ax = fig.add_subplot(1, len(z_list), i+1, projection='3d')
-        
-        # 데이터 슬라이싱
-        z_slice = z[channel_idx, :duration]
-        real, imag = z_slice.real, z_slice.imag
-        time = np.arange(len(z_slice))
-        
-        # 궤적 그리기
-        ax.plot(real, imag, time, alpha=0.8, label=label)
-        ax.set_xlabel('Real')
-        ax.set_ylabel('Imaginary')
-        ax.set_zlabel('Time')
-        ax.set_title(f'Trajectory: {label}')
-        ax.legend()
-        
     plt.tight_layout()
     plt.show()
-    
-import mne
-from src.core.preprocess import EEGLoader
-from src.core.geometry import GeometryExtractor
-from src.data.encoder import GeometricSpikeEncoder
 
+def compare_3d_trajectories(z_list, labels, channel_idx=0, duration_sec=1.0, sfreq=160.0, overlay=False):
+    """
+    여러 신호의 궤적을 비교.
+    overlay=True: 한 그래프에 겹쳐서 그림 (위상 차이 확인용)
+    overlay=False: 같은 스케일의 서브플롯으로 나란히 그림 (형태 비교용)
+    """
+    n_samples = int(duration_sec * sfreq)
+    time = np.arange(n_samples) / sfreq
+    
+    if overlay:
+        # 겹쳐 그리기 모드
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        for z, label in zip(z_list, labels):
+            z_slice = z[channel_idx, :n_samples]
+            ax.plot(z_slice.real, z_slice.imag, time, label=label, alpha=0.7)
+            
+        ax.set_xlabel(r'Real [$\mu V$]')
+        ax.set_ylabel(r'Imaginary [$\mu V$]')
+        ax.set_zlabel('Time [s]')
+        ax.set_title(f'Trajectory Comparison (Overlay) - Ch {channel_idx}')
+        ax.legend()
+        plt.show()
+        
+    else:
+        # 나란히 그리기 모드 (Scale 공유)
+        fig = plt.figure(figsize=(6 * len(z_list), 6))
+        
+        # 축 스케일 통일을 위한 Min/Max 계산
+        all_real = np.concatenate([z[channel_idx, :n_samples].real for z in z_list])
+        all_imag = np.concatenate([z[channel_idx, :n_samples].imag for z in z_list])
+        r_min, r_max = all_real.min(), all_real.max()
+        i_min, i_max = all_imag.min(), all_imag.max()
+        
+        for i, (z, label) in enumerate(zip(z_list, labels)):
+            ax = fig.add_subplot(1, len(z_list), i+1, projection='3d')
+            z_slice = z[channel_idx, :n_samples]
+            
+            ax.plot(z_slice.real, z_slice.imag, time, alpha=0.8)
+            
+            # 스케일 고정
+            ax.set_xlim(r_min, r_max)
+            ax.set_ylim(i_min, i_max)
+            ax.set_zlim(0, duration_sec)
+            
+            ax.set_xlabel(r'Real [$\mu V$]')
+            ax.set_ylabel(r'Imaginary [$\mu V$]')
+            ax.set_zlabel('Time [s]')
+            ax.set_title(f'{label}')
+            
+        plt.suptitle(f'Trajectory Comparison (Side-by-Side) - Ch {channel_idx}')
+        plt.tight_layout()
+        plt.show()
+        
 def run_research_pipeline():
-    print("\n--- Phase 1: Basic Research Pipeline ---")
+    """
+    [연구용 파이프라인]
+    데이터 로드 -> 힐베르트 변환 -> 기하학적 특징 추출(곡률, 비틀림, 속력) -> 3D 시각화
+    """
+    print("\n--- 🧪 Phase 1: Geometric Analysis Pipeline ---")
+    
+    # 1. 데이터 로드 및 전처리
     loader = EEGLoader()
-    raw = loader.fetch_and_load(subject=1)
-    analytic_data, _ = loader.process_to_analytic(raw)
+    raw = loader.fetch_and_load(subjects=[1]) # 피험자 1번 데이터
     
-    curvature = GeometryExtractor.calculate_curvature(analytic_data)
-    encoder = GeometricSpikeEncoder(threshold_type='std')
-    spikes, threshold = encoder.threshold_encoding(curvature)
+    # 2. 힐베르트 변환 (Alpha~Beta 대역 집중: 8~30Hz 예시)
+    # *광대역 신호가 기하학적 특성이 더 잘 보일 수도 있으니 필터 범위 조절 가능
+    z, info = loader.process_to_analytic(raw, l_freq=8.0, h_freq=30.0)
+    sfreq = info['sfreq']
     
-    plt.figure(figsize=(12, 4))
-    plt.plot(curvature[0, :500], label=r'Curvature ($\kappa$)')
-    plt.axhline(y=threshold, color='r', linestyle='--', label='Threshold')
-    plt.legend(); plt.show()
-
-def run_quantitative_comparison():
-    print("\n--- Phase 3: Quantitative Analysis ---")
-    loader = EEGLoader()
-    raw = loader.fetch_and_load(subject=1)
-    events, event_id = mne.events_from_annotations(raw)
+    # 3. 새로운 기하학적 특징 추출 (New Features!)
+    print("Computing Geometric Features...")
+    curvature = GeometryExtractor.calculate_curvature(z)
+    velocity = GeometryExtractor.calculate_complex_velocity(z, sfreq=sfreq)
+    torsion = GeometryExtractor.calculate_torsion_3d(z, sfreq=sfreq)
     
-    sfreq = raw.info['sfreq']
-    duration = int(sfreq * 3)
+    # 4. 시각화 1: 3D 위상 공간 궤적 (Time-Real-Imag)
+    target_ch = 10 # 시각화할 채널 인덱스
+    print(f"Visualizing 3D Trajectory for Channel {target_ch}...")
+    plot_complex_trajectory_3d(z, channel_idx=target_ch, duration_sec=2.0, sfreq=sfreq)
     
-    t1_idx = events[events[:, 2] == event_id['T1']][0][0]
-    t2_idx = events[events[:, 2] == event_id['T2']][0][0]
+    # 5. 시각화 2: Feature 비교 (원본 vs 곡률 vs 비틀림)
+    print("Comparing Features...")
+    fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
     
-    z_l, _ = loader.process_to_analytic(raw.copy().crop(tmin=t1_idx/sfreq, tmax=(t1_idx+duration)/sfreq))
-    z_r, _ = loader.process_to_analytic(raw.copy().crop(tmin=t2_idx/sfreq, tmax=(t2_idx+duration)/sfreq))
+    subset = int(sfreq * 2.0) # 2초 구간
+    t_axis = np.arange(subset) / sfreq
     
-    curv_l = GeometryExtractor.calculate_curvature(z_l)
-    curv_r = GeometryExtractor.calculate_curvature(z_r)
+    # (1) 원본 진폭
+    axes[0].plot(t_axis, np.abs(z[target_ch, :subset]), color='k')
+    axes[0].set_title("Instantaneous Amplitude (Envelope)")
+    axes[0].set_ylabel(r"Amp [$\mu V$]")
     
-    plt.hist(curv_l.flatten(), bins=100, alpha=0.5, label='Left', color='blue', range=(0, 2))
-    plt.hist(curv_r.flatten(), bins=100, alpha=0.5, label='Right', color='red', range=(0, 2))
-    plt.title("Curvature Distribution")
-    plt.legend(); plt.show()
+    # (2) 속력 (Velocity)
+    axes[1].plot(t_axis, velocity[target_ch, :subset], color='orange')
+    axes[1].set_title("Complex Velocity (Speed in Phase Space)")
+    axes[1].set_ylabel("Speed")
+    
+    # (3) 곡률 (Curvature)
+    axes[2].plot(t_axis, curvature[target_ch, :subset], color='blue')
+    axes[2].set_title("Curvature (2D Plane Bending)")
+    axes[2].set_ylabel(r"$\kappa$")
+    
+    # (4) 비틀림 (Torsion) - 3D 특성
+    axes[3].plot(t_axis, torsion[target_ch, :subset], color='red')
+    axes[3].set_title("Torsion (3D Twisting)")
+    axes[3].set_ylabel(r"$\tau$")
+    axes[3].set_xlabel("Time [s]")
+    
+    plt.tight_layout()
+    plt.show()

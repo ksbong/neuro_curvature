@@ -1,31 +1,35 @@
-import torch
 import snntorch as snn
 from snntorch import surrogate
+import torch.nn as nn
+import torch
 
-class GeometricSNN(torch.nn.Module):
-    def __init__(self, num_inputs, num_hidden, num_outputs, beta=0.9):
+class DynamicDeepSNN(nn.Module):
+    def __init__(self, num_inputs, num_hidden=256, num_outputs=3):
         super().__init__()
-        # 스파이크 기반 그래디언트 전달을 위해 surrogate gradient 사용
         spike_grad = surrogate.fast_sigmoid()
-        
-        self.fc1 = torch.nn.Linear(num_inputs, num_hidden)
+        beta = 0.8 
+
+        self.fc1 = nn.Linear(num_inputs, num_hidden)
         self.lif1 = snn.Leaky(beta=beta, spike_grad=spike_grad)
-        self.fc2 = torch.nn.Linear(num_hidden, num_outputs)
+        self.fc2 = nn.Linear(num_hidden, num_hidden)
         self.lif2 = snn.Leaky(beta=beta, spike_grad=spike_grad)
+        self.fc3 = nn.Linear(num_hidden, num_outputs)
+        self.lif3 = snn.Leaky(beta=beta, spike_grad=spike_grad)
+
+        # 가중치 초기화: 죽은 뉴런 살리기
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        # x shape: (time_steps, batch, num_inputs)
-        mem1 = self.lif1.init_leaky()
-        # 이 부분! .index_copy 를 삭제해야 해
-        mem2 = self.lif2.init_leaky() 
-        
-        spk2_rec = [] 
+        mem1, mem2, mem3 = self.lif1.init_leaky(), self.lif2.init_leaky(), self.lif3.init_leaky()
+        spk_out_hist = []
 
         for step in range(x.size(0)):
-            cur1 = self.fc1(x[step])
-            spk1, mem1 = self.lif1(cur1, mem1)
-            cur2 = self.fc2(spk1)
-            spk2, mem2 = self.lif2(cur2, mem2)
-            spk2_rec.append(spk2)
+            spk1, mem1 = self.lif1(self.fc1(x[step]), mem1)
+            spk2, mem2 = self.lif2(self.fc2(spk1), mem2)
+            spk3, mem3 = self.lif3(self.fc3(spk2), mem3)
+            spk_out_hist.append(spk3)
 
-        return torch.stack(spk2_rec), mem2
+        return torch.stack(spk_out_hist), mem3 #

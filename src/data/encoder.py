@@ -1,38 +1,27 @@
-import numpy as np
 import torch
+import numpy as np
 
-class GeometricSpikeEncoder:
-    def __init__(self, threshold_type='mean', custom_threshold=None):
-        self.threshold_type = threshold_type
-        self.custom_threshold = custom_threshold
+class MultiFeatureEncoder:
+    def __init__(self, num_neurons_curv=5, eeg_threshold=1.0):
+        self.num_neurons_curv = num_neurons_curv
+        # 곡률 분포(Mean 0.04, 95% 0.13)에 최적화된 임계값
+        self.curv_thresholds = torch.tensor([0.02, 0.04, 0.06, 0.09, 0.13])
+        self.eeg_threshold = eeg_threshold
 
-    def threshold_encoding(self, curvature):
-        """
-        곡률이 임계값을 넘으면 1(Spike), 아니면 0을 반환함.
-        """
-        if self.threshold_type == 'mean':
-            # 전체 채널/시간의 평균 곡률을 임계값으로 설정
-            threshold = np.mean(curvature) * 1.5 
-        elif self.threshold_type == 'std':
-            # 평균 + 표준편차 기반 임계값
-            threshold = np.mean(curvature) + np.std(curvature)
-        else:
-            threshold = self.custom_threshold if self.custom_threshold else 0.5
-        
-        print(f"--- Encoding with threshold: {threshold:.4f} ---")
-        
-        # 스파이크 생성 (1: Spike, 0: Silence)
-        spikes = (curvature > threshold).astype(np.float32)
-        return torch.from_numpy(spikes), threshold
+    def encode(self, curvature_log, raw_eeg):
+        if not isinstance(curvature_log, torch.Tensor):
+            curvature_log = torch.from_numpy(curvature_log).float()
+        if not isinstance(raw_eeg, torch.Tensor):
+            raw_eeg = torch.from_numpy(raw_eeg).float()
 
-    def latency_encoding(self, curvature, num_steps=20):
-        """
-        곡률이 높을수록 시간 윈도우 내에서 '빨리' 스파이크가 발생하게 함. (Latency Encoding)
-        """
-        # 곡률 값을 0~1 사이로 정규화
-        norm_curvature = (curvature - curvature.min()) / (curvature.max() - curvature.min() + 1e-9)
-        
-        # 높은 곡률일수록 더 짧은 latency(더 빠른 시간 스텝)를 가짐
-        # (간단한 구현을 위해 1D 텐서 기준 예시)
-        # 실제 SNN 학습 시에는 snntorch.spikegen.latency 기능을 활용하면 더 강력함
-        return torch.from_numpy(norm_curvature)
+        # 1. 곡률 인코딩 (64채널 * 5개 임계값 = 320차원)
+        curv_spikes = []
+        for v in self.curv_thresholds:
+            curv_spikes.append((curvature_log > v).float())
+        curv_encoded = torch.cat(curv_spikes, dim=0)
+
+        # 2. 원본 EEG 인코딩 (진폭 기반 64차원)
+        eeg_encoded = (torch.abs(raw_eeg) > self.eeg_threshold).float()
+
+        # 3. 데이터 결합 (총 384차원)
+        return torch.cat([curv_encoded, eeg_encoded], dim=0)
