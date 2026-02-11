@@ -4,6 +4,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 class GeometryFeatureExtractor(BaseEstimator, TransformerMixin):
     def __init__(self, window_length=25, polyorder=3):
+        # 님 원래 설정 (window=25, poly=3) 그대로 복구
         self.window_length = window_length
         self.polyorder = polyorder
 
@@ -17,54 +18,56 @@ class GeometryFeatureExtractor(BaseEstimator, TransformerMixin):
         
         for i in range(n_epochs):
             epoch_features = []
-            
-            # [수정됨] 채널을 합치지 않고, 각 채널별로 루프를 돕니다.
+            # [핵심 수정] 채널을 합치지(sum) 않고 반복문으로 각각 추출
             for ch in range(n_channels):
-                # 채널별 신호 추출 (1D signal)
-                x_ch = X[i, ch, :]
+                x_ch = X[i, ch, :] # (n_times,) 1D array
                 
-                # 1. 힐베르트 변환 (Analytic Signal)
-                z = hilbert(x_ch)
+                # --- 님의 Original Logic 시작 ---
+                # 1. Analytic Signal
+                z = hilbert(x_ch) 
                 
-                # 2. Savitzky-Golay 미분
+                # 2. Savitzky-Golay (Noise reduction)
                 dz = savgol_filter(z, self.window_length, self.polyorder, deriv=1)
                 ddz = savgol_filter(z, self.window_length, self.polyorder, deriv=2)
                 
-                # 3. 스칼라 값으로 변환 (Vector -> Scalar)
-                # 1D 신호이므로 axis=0 등의 합산이 필요 없음 (단일 값)
+                # 3. Complex Curvature (Original Formula)
+                # 1D 배열이므로 axis=0 합산 없이 바로 계산 (점 단위 연산)
                 mag_dz_sq = np.abs(dz)**2 + 1e-9
                 mag_ddz_sq = np.abs(ddz)**2
                 dot_dz_ddz = np.abs(dz * np.conj(ddz))**2
                 
-                # 4. 복소 곡률 (Complex Curvature) - 시간 축에 대한 배열
-                kappa = np.sqrt(np.maximum(0, mag_dz_sq * mag_ddz_sq - dot_dz_ddz)) / (mag_dz_sq**1.5)
+                # 분모/분자 계산
+                numerator = np.sqrt(np.maximum(0, mag_dz_sq * mag_ddz_sq - dot_dz_ddz))
+                denominator = mag_dz_sq**1.5
                 
-                # 5. Tangling (꼬임 지표)
+                kappa = numerator / denominator
+                
+                # 4. Tangling (Original Logic)
                 step = 4
                 z_sub = z[::step]
                 dz_sub = dz[::step]
                 
-                # 거리 행렬 계산 (Broadcasting)
+                # 1D 거리 계산 (Broadcasting)
                 dist_z = np.abs(z_sub[:, None] - z_sub[None, :])**2
                 dist_dz = np.abs(dz_sub[:, None] - dz_sub[None, :])**2
                 
                 Q_matrix = dist_dz / (dist_z + 1e-6)
-                np.fill_diagonal(Q_matrix, 0) # 자기 자신과의 거리는 제외
-                Q_t = np.max(Q_matrix, axis=1) # 각 시점별 최대 꼬임
+                np.fill_diagonal(Q_matrix, 0)
+                Q_t = np.max(Q_matrix, axis=1)
                 
-                # 6. 특징 추출 (채널별 통계량)
-                # 이 채널의: [곡률 중간값, 평균 에너지, 최대 꼬임, 평균 꼬임, 로그 분산]
-                ch_feats = [
-                    np.median(kappa), 
-                    np.mean(np.abs(dz)), 
-                    np.max(Q_t), 
-                    np.mean(Q_t),
-                    np.log(np.var(x_ch) + 1e-9)
+                # 5. Feature Vector (채널별로 저장)
+                # 로그 변환(np.log)은 데이터 분포상 SVM을 위해 유지하는 게 좋습니다.
+                f = [
+                    np.median(kappa),       # 곡률 중간값
+                    np.mean(np.abs(dz)),    # 에너지 (Phase Velocity)
+                    np.max(Q_t),            # 최대 꼬임
+                    np.mean(Q_t),           # 평균 꼬임
+                    np.log(np.var(x_ch) + 1e-9) # Log Variance
                 ]
-                epoch_features.extend(ch_feats)
-            
-            # 모든 채널의 특징을 일렬로 연결 (Concatenate)
-            # 결과 벡터 길이 = n_channels * 5
+                epoch_features.extend(f)
+                # --- 님의 Original Logic 끝 ---
+
+            # 결과: (Epochs, Channels * 5) 형태의 벡터
             features.append(epoch_features)
             
         return np.array(features)
